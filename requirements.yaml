@@ -1,4 +1,4 @@
-name: sdfsrn-env
+name: sdfsrn
 channels:
   - conda-forge
   - pytorch
@@ -17,5 +17,6 @@ dependencies:
   - trimesh
   - pyyaml
   - pip
+  - matplotlib
   - pip:
     - pymcubes
