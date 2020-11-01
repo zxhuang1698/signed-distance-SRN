@@ -26,8 +26,6 @@ class Dataset(base.Dataset):
         self.cat_id = list(self.cat_id_all.values()) if opt.data.shapenet.cat is None else \
                       [v for k,v in self.cat_id_all.items() if k in opt.data.shapenet.cat.split(",")]
         self.path = "data/NMR_Dataset"
-        import pdb
-        pdb.set_trace()
         self.list_cads = self.get_list(opt,split)
         if subset: self.list_cads = self.list_cads[:subset]
         # self.list: (category, model_name, model_index, view_index)

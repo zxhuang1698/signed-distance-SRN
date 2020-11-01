@@ -35,7 +35,9 @@ class Model(implicit.Model):
             metric_eval["dist_acc"] += dist_acc*len(var.idx)
             metric_eval["dist_cov"] += dist_cov*len(var.idx)
             loader.set_postfix(loss="{:.3f}".format(loss.all))
-            if it==0 and training: self.visualize(opt,var,step=ep,split="eval")
+            if it==0 and training: 
+                self.visualize(opt,var,step=ep,split="eval")
+                self.dump_results(opt,var,train=True)
             if not training: self.dump_results(opt,var,write_new=(it==0))
         for key in loss_eval: loss_eval[key] /= len(self.test_data)
         for key in metric_eval: metric_eval[key] /= len(self.test_data)
@@ -105,44 +107,54 @@ class Model(implicit.Model):
             mask_normal = var.mask_map[...,1:-1,1:-1]
             util_vis.tb_image(opt,self.tb,step,split,"normal_masked",normal*mask_normal+(-1)*(1-mask_normal),from_range=(-1,1))
             util_vis.tb_image(opt,self.tb,step,split,"level",var.level_map,cmap="hot")
+            if split=="eval":
+                util_vis.tb_pointcloud(opt,self.tb,step,split,"pred_gt_points",pred=var.dpc_pred,GT=var.dpc.points)
+                util_vis.tb_mesh(opt,self.tb,step,split,"pred_meshes",pred=var.dpc_pred,GT=var.dpc.points)
         # visualize point cloud
         if opt.eval and opt.visdom:
             with util.suppress(stdout=True,stderr=True): # suppress weird (though unharmful) visdom errors related to remote connections
                 util_vis.vis_pointcloud(opt,self.vis,step,split,pred=var.dpc_pred,GT=var.dpc.points)
 
     @torch.no_grad()
-    def dump_results(self,opt,var,write_new=False):
-        os.makedirs("{}/dump/".format(opt.output_path),exist_ok=True)
-        util_vis.dump_images(opt,var.idx,"image_input",var.rgb_input_map,masks=var.mask_input_map,from_range=(-1,1))
-        util_vis.dump_images(opt,var.idx,"image_recon",var.rgb_recon_map,masks=var.mask_map,from_range=(-1,1))
-        util_vis.dump_images(opt,var.idx,"depth",1/(var.depth_map-opt.impl.init_depth+1))
+    def dump_results(self,opt,var,write_new=False, train=False):
+        if train == False:
+            current_folder = 'dump'
+            os.makedirs("{}/dump/".format(opt.output_path),exist_ok=True)
+        else:
+            current_folder = 'vis'
+            os.makedirs("{}/vis/".format(opt.output_path),exist_ok=True)
+        
+        util_vis.dump_images(opt,var.idx,"image_input",var.rgb_input_map,masks=var.mask_input_map,from_range=(-1,1),folder=current_folder)
+        util_vis.dump_images(opt,var.idx,"image_recon",var.rgb_recon_map,masks=var.mask_map,from_range=(-1,1),folder=current_folder)
+        util_vis.dump_images(opt,var.idx,"depth",1/(var.depth_map-opt.impl.init_depth+1),folder=current_folder)
         normal = self.compute_normal_from_depth(opt,var.depth_map,intr=var.intr)
-        util_vis.dump_images(opt,var.idx,"normal",normal,from_range=(-1,1))
-        util_vis.dump_images(opt,var.idx,"mask",var.mask_map)
-        util_vis.dump_images(opt,var.idx,"mask_input",var.mask_input_map)
-        util_vis.dump_images(opt,var.idx,"depth_masked",1/(var.depth_map-opt.impl.init_depth+1)*var.mask_map)
+        util_vis.dump_images(opt,var.idx,"normal",normal,from_range=(-1,1),folder=current_folder)
+        util_vis.dump_images(opt,var.idx,"mask",var.mask_map,folder=current_folder)
+        util_vis.dump_images(opt,var.idx,"mask_input",var.mask_input_map,folder=current_folder)
+        util_vis.dump_images(opt,var.idx,"depth_masked",1/(var.depth_map-opt.impl.init_depth+1)*var.mask_map,folder=current_folder)
         mask_normal = var.mask_map[...,1:-1,1:-1]
-        util_vis.dump_images(opt,var.idx,"normal_masked",normal*mask_normal+(-1)*(1-mask_normal),from_range=(-1,1))
-        util_vis.dump_meshes(opt,var.idx,"mesh",var.mesh_pred)
-        # write/append to html for convenient visualization
-        html_fname = "{}/dump/vis.html".format(opt.output_path)
-        with open(html_fname,"w" if write_new else "a") as html:
-            for i in var.idx:
-                html.write("{} ".format(i))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"image_input"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"image_recon"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"depth"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"normal"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"mask"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"mask_input"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"depth_masked"))
-                html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"normal_masked"))
-                html.write("<br>\n")
-        # write chamfer distance results
-        chamfer_fname = "{}/chamfer.txt".format(opt.output_path)
-        with open(chamfer_fname,"w" if write_new else "a") as file:
-            for i,acc,comp in zip(var.idx,var.cd_acc,var.cd_comp):
-                file.write("{} {:.8f} {:.8f}\n".format(i,acc,comp))
+        util_vis.dump_images(opt,var.idx,"normal_masked",normal*mask_normal+(-1)*(1-mask_normal),from_range=(-1,1),folder=current_folder)
+        util_vis.dump_meshes(opt,var.idx,"mesh",var.mesh_pred,folder=current_folder)
+        # write/append to html for convenient visualization if not training time
+        if train == False:
+            html_fname = "{}/dump/vis.html".format(opt.output_path)
+            with open(html_fname,"w" if write_new else "a") as html:
+                for i in var.idx:
+                    html.write("{} ".format(i))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"image_input"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"image_recon"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"depth"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"normal"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"mask"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"mask_input"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"depth_masked"))
+                    html.write("<img src=\"{}_{}.png\" height=64 width=64> ".format(i,"normal_masked"))
+                    html.write("<br>\n")
+            # write chamfer distance results
+            chamfer_fname = "{}/chamfer.txt".format(opt.output_path)
+            with open(chamfer_fname,"w" if write_new else "a") as file:
+                for i,acc,comp in zip(var.idx,var.cd_acc,var.cd_comp):
+                    file.write("{} {:.8f} {:.8f}\n".format(i,acc,comp))
 
     @torch.no_grad()
     def compute_normal_from_depth(self,opt,depth,intr=None):

@@ -26,6 +26,42 @@ def tb_image(opt,tb,step,group,name,images,masks=None,num_vis=None,from_range=(0
     tag = "{0}/{1}".format(group,name)
     tb.add_image(tag,image_grid,step)
 
+@torch.no_grad()
+def tb_pointcloud(opt,tb,step,group,name,pred,GT, max_imgs=6, max_pts=2000):
+    assert pred.shape[0] == GT.shape[0]
+    tag = "{0}/{1}".format(group,name)
+    current_pred = pred[:max_imgs, :max_pts]
+    current_gt = GT[:max_imgs, :max_pts]
+    current_mix = torch.cat([current_pred, current_gt], dim=1)
+    color_pred = torch.zeros_like(current_pred, dtype=torch.int)
+    color_gt = torch.zeros_like(current_gt, dtype=torch.int)
+    # red prediction, blue gt
+    color_pred[:, :, 0] = 255
+    color_gt[:, :, 2] = 255
+    color_mix = torch.cat([color_pred, color_gt], dim=1)
+    tb.add_mesh(tag, current_mix, colors=color_mix, global_step=step)
+
+@torch.no_grad()
+def tb_mesh(opt,tb,step,group,name,pred,GT, max_imgs=6, max_pts=2000):
+    assert pred.shape[0] == GT.shape[0]
+    tag = "{0}/{1}".format(group,name)
+    current_pred = pred[:max_imgs, :max_pts]
+    current_gt = GT[:max_imgs, :max_pts]
+    current_mix = torch.cat([current_pred, current_gt], dim=1)
+    color_pred = torch.zeros_like(current_pred, dtype=torch.int)
+    color_gt = torch.zeros_like(current_gt, dtype=torch.int)
+    # red prediction, blue gt
+    color_pred[:, :, 0] = 255
+    color_gt[:, :, 2] = 255
+    color_mix = torch.cat([color_pred, color_gt], dim=1)
+    tb.add_mesh(tag, current_mix, colors=color_mix, global_step=step)
+    
+    # for i in range(min(pred.shape[0], max_imgs)):
+    #     tag = "{0}/{1}, sample {2}".format(group,name,i)
+    #     current_pred = pred[i, :max_pts]
+    #     current_gt = GT[i, :max_pts]
+    #     current_mix = torch.cat([current_pred, current_gt], dim=0)
+
 def preprocess_vis_image(opt,images,masks=None,from_range=(0,1),cmap="gray"):
     min,max = from_range
     images = (images-min)/(max-min)
@@ -37,11 +73,11 @@ def preprocess_vis_image(opt,images,masks=None,from_range=(0,1),cmap="gray"):
         images = get_heatmap(opt,images[:,0].cpu(),cmap=cmap)
     return images
 
-def dump_images(opt,idx,name,images,masks=None,from_range=(0,1),cmap="gray"):
+def dump_images(opt,idx,name,images,masks=None,from_range=(0,1),cmap="gray", folder='dump'):
     images = preprocess_vis_image(opt,images,masks=masks,from_range=from_range,cmap=cmap) # [B,3,H,W]
     images = images.cpu().permute(0,2,3,1).numpy() # [B,H,W,3]
     for i,img in zip(idx,images):
-        fname = "{}/dump/{}_{}.png".format(opt.output_path,i,name)
+        fname = "{}/{}/{}_{}.png".format(opt.output_path,folder,i,name)
         img_uint8 = (img*255).astype(np.uint8)
         imageio.imsave(fname,img_uint8)
 
@@ -50,9 +86,9 @@ def get_heatmap(opt,gray,cmap): # [N,H,W]
     color = torch.from_numpy(color[...,:3]).permute(0,3,1,2).float() # [N,3,H,W]
     return color
 
-def dump_meshes(opt,idx,name,meshes):
+def dump_meshes(opt,idx,name,meshes, folder='dump'):
     for i,mesh in zip(idx,meshes):
-        fname = "{}/dump/{}_{}.ply".format(opt.output_path,i,name)
+        fname = "{}/{}/{}_{}.ply".format(opt.output_path,folder,i,name)
         mesh.export(fname)
 
 @torch.no_grad()
