@@ -27,6 +27,7 @@ def parse_arguments(args):
         for k in keys_sub[:-1]:
             if k not in opt_sub: opt_sub[k] = {}
             opt_sub = opt_sub[k]
+        # if opt_cmd['key1']['key2']['key3'] already exist for key1.key2.key3, print key3 as error msg 
         assert keys_sub[-1] not in opt_sub,keys_sub[-1]
         opt_sub[keys_sub[-1]] = yaml.safe_load(value)
     opt_cmd = edict(opt_cmd)

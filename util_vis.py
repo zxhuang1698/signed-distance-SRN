@@ -15,6 +15,8 @@ def tb_image(opt,tb,step,group,name,images,masks=None,num_vis=None,from_range=(0
     num_H,num_W = num_vis or opt.tb.num_images
     images = images[:num_H*num_W]
     if poses is not None:
+        # poses: [B, 3, 4]
+        # rots: [max(B, num_images), 3, 3]
         rots = poses[:num_H*num_W,...,:3]
         images = torch.stack([draw_pose(opt,image,rot,size=20,width=2) for image,rot in zip(images,rots)],dim=0)
     image_grid = torchvision.utils.make_grid(images[:,:3],nrow=num_W,pad_value=1.)
@@ -28,6 +30,7 @@ def preprocess_vis_image(opt,images,masks=None,from_range=(0,1),cmap="gray"):
     min,max = from_range
     images = (images-min)/(max-min)
     if masks is not None:
+        # then the mask is directly the transparency channel of png
         images = torch.cat([images,masks],dim=1)
     images = images.clamp(min=0,max=1).cpu()
     if images.shape[1]==1:
@@ -88,11 +91,16 @@ def vis_pointcloud(opt,vis,step,split,pred,GT=None):
 
 @torch.no_grad()
 def draw_pose(opt,image,rot_mtrx,size=15,width=1):
+    # rot_mtrx: [3, 4]
     mode = "RGBA" if image.shape[0]==4 else "RGB"
     image_pil = torchvision_F.to_pil_image(image.cpu()).convert("RGBA")
     draw_pil = PIL.Image.new("RGBA",image_pil.size,(0,0,0,0))
     draw = PIL.ImageDraw.Draw(draw_pil)
     center = (size,size)
+    # first column of rotation matrix is the rotated vector of [1, 0, 0]'
+    # second column of rotation matrix is the rotated vector of [0, 1, 0]'
+    # third column of rotation matrix is the rotated vector of [0, 0, 1]'
+    # then always take the first two element of each column is a projection to the 2D plane for visualization
     endpoint = [(size+size*p[0],size+size*p[1]) for p in rot_mtrx.t()]
     draw.line([center,endpoint[0]],fill=(255,0,0),width=width)
     draw.line([center,endpoint[1]],fill=(0,255,0),width=width)

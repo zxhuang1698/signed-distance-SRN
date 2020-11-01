@@ -26,8 +26,13 @@ class Dataset(base.Dataset):
         self.cat_id = list(self.cat_id_all.values()) if opt.data.shapenet.cat is None else \
                       [v for k,v in self.cat_id_all.items() if k in opt.data.shapenet.cat.split(",")]
         self.path = "data/NMR_Dataset"
+        import pdb
+        pdb.set_trace()
         self.list_cads = self.get_list(opt,split)
         if subset: self.list_cads = self.list_cads[:subset]
+        # self.list: (category, model_name, model_index, view_index)
+        # like ('02958343', '5b7985f5dd37dec2c2509a0026f2a07d', 0, 9)
+        # note the views are obtained in order according to a file that shuffle the order of 24 views
         self.list = self.get_list_with_viewpoints(opt,split)
         # preload dataset
         if opt.data.preload:
@@ -35,6 +40,7 @@ class Dataset(base.Dataset):
             self.cameras = self.preload_threading(opt,self.get_camera,data_str="cameras")
             self.pointclouds = self.preload_threading(opt,self.get_pointcloud,data_str="point clouds")
 
+    # read the list file, return a list of tuple, (category, model_name, model_index)
     def get_list(self,opt,split):
         cads = []
         for c in self.cat_id:
@@ -47,7 +53,10 @@ class Dataset(base.Dataset):
         view = (opt.data.shapenet.train_view if split=="train" else opt.data.shapenet.test_view) or self.num_views
         with open("data/shapenet_view.pkl","rb") as file:
             view_idx = pickle.load(file)
+        # view_idx['02828884']['train']['f5c6c9a4c5787dae19fb4103277a6b93'] = 
+        # [13, 2, 3, 0, 9, 18, 16, 4, 5, 21, 19, 23, 15, 17, 10, 14, 7, 22, 8, 11, 12, 20, 6, 1]
         view_idx = { k:v for k,v in view_idx.items() if k in self.cat_id }
+        # add view_index after the model_index
         samples = [(c,m,i,v) for c,m,i in self.list_cads for v in view_idx[c][split][m][:view]]
         return samples
 
@@ -140,8 +149,9 @@ class Dataset(base.Dataset):
             raise NotImplementedError
         if aug.rot_angle:
             angle = torch.tensor(aug.rot_angle)*np.pi/180
-            R = camera.angle_to_rotation_matrix(angle,axis="X") # in-place rotation
+            R = camera.angle_to_rotation_matrix(angle,axis="X") # in-place rotation w.r.t. X axis
             rot_inplane = camera.pose(R=R)
+            # world frame -> camera frame
             pose = camera.pose.compose([pose,camera.pose.invert(pose_cam),rot_inplane,pose_cam])
         return pose
 

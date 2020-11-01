@@ -13,9 +13,11 @@ import util,util_vis
 def get_dense_3D_grid(opt,var,N=None):
     batch_size = len(var.idx)
     N = N or opt.eval.vox_res
+    # -0.6, 0.6
     range_min,range_max = opt.eval.range
     grid = torch.linspace(range_min,range_max,N+1,device=opt.device)
     points_3D = torch.stack(torch.meshgrid(grid,grid,grid),dim=-1) # [N,N,N,3]
+    # actually N+1 instead of N
     points_3D = points_3D.repeat(batch_size,1,1,1,1) # [B,N,N,N,3]
     return points_3D
 
@@ -37,6 +39,7 @@ def compute_chamfer_dist(opt,var):
     batch_size = len(var.idx)
     points_3D = get_dense_3D_grid(opt,var) # [B,N,N,N,3]
     level_vox = compute_level_grid(opt,var.impl_func,points_3D=points_3D) # [B,N,N,N,K]
+    # level_grids: a list of length B, each is [N,N,N,3]
     *level_grids, = level_vox.cpu().numpy() # numpy equivalent to torch.unbind
     meshes,pointclouds = convert_to_explicit(opt,level_grids,isoval=0.,to_pointcloud=True)
     var.mesh_pred = meshes
@@ -44,6 +47,8 @@ def compute_chamfer_dist(opt,var):
     if opt.eval.icp:
         var.dpc_pred = ICP(opt,var.dpc_pred,var.dpc.points)
     dist_acc,dist_comp,_,_ = chamfer_distance(opt,X1=var.dpc_pred,X2=var.dpc.points)
+    # var.cd_acc: [B, n_points_pred]
+    # var.cd_comp: [B, n_points_gt]
     var.cd_acc = dist_acc.mean(dim=1)
     var.cd_comp = dist_comp.mean(dim=1)
     return dist_acc.mean(),dist_comp.mean()
@@ -69,6 +74,7 @@ def convert_to_explicit_worker(opt,i,level_vox_i,isoval,meshes,pointclouds=None)
     assert(level_vox_i.shape[0]==level_vox_i.shape[1]==level_vox_i.shape[2])
     S = level_vox_i.shape[0]
     range_min,range_max = opt.eval.range
+    # marching cubes treat every cube as unit length
     vertices = vertices/S*(range_max-range_min)+range_min
     mesh = trimesh.Trimesh(vertices,faces)
     meshes[i] = mesh

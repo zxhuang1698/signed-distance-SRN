@@ -25,6 +25,7 @@ def get_time(sec):
     s = int(sec%60)
     return d,h,m,s
 
+# which color to use for different log info
 class Log:
     def __init__(self): pass
     def process(self,pid):
@@ -81,6 +82,7 @@ def move_to_device(X,device):
         return X.to(device=device)
     return X
 
+# this recursion seems to only work for the outer loop when dict_type is not dict
 def to_dict(D,dict_type=dict):
     D = dict_type(D)
     for k,v in D.items():

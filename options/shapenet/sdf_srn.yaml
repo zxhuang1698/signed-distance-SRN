@@ -2,7 +2,7 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: car
+name: car_0
 load: output/pretrain/shapenet/latest.ckpt
 
 arch:
@@ -37,7 +37,9 @@ optim:
     lr_test: 1.e-2
     iter_test: 500
 
-max_epoch: 28
+max_epoch: 27
+
+visdom:
 
 freq:
     scalar: 200 # iterations

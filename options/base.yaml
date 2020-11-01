@@ -47,7 +47,7 @@ tb:
     num_images: [4,8]
 visdom:
     server: localhost
-    port: 9000
+    port: 40000
     num_samples: 4
     num_points: 20000
 

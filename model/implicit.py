@@ -27,6 +27,7 @@ class Graph(base.Graph):
     def forward(self,opt,var,training=False):
         raise NotImplementedError
 
+# the implicit function
 class Generator(torch.nn.Module):
 
     def __init__(self,opt):
@@ -34,14 +35,24 @@ class Generator(torch.nn.Module):
         self.define_network(opt)
 
     def define_network(self,opt):
+        # 3 + 6 * L
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
+        # dim before rgb and sdf head
         feat_dim = opt.arch.layers_impl[-1]
+        # each is a module list, every element is a sequential to generate params of specific layer
         self.hyper_impl = self.get_module_params(opt,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
         self.hyper_level = self.get_module_params(opt,opt.arch.layers_level,k0=feat_dim)
         self.hyper_rgb = self.get_module_params(opt,opt.arch.layers_rgb,k0=feat_dim)
 
     def get_module_params(self,opt,layers,k0,interm_coord=False):
         impl_params = torch.nn.ModuleList()
+        # define layers that generate the params of following layers:
+        # sdf: [(None, 1)]
+        # rgb: [(None, 3)]
+        # implicit: [(None, 128), (128, 128), (128, 128), (128, 128)]
+        # None will be replaced by k0
+        # Then it's [(in, out), (in, out), ...]. interm_coord means
+        # feed position info into every hidden layer just like DVR
         L = util.get_layer_dims(layers)
         for li,(k_in,k_out) in enumerate(L):
             if li==0: k_in = k0
@@ -52,6 +63,11 @@ class Generator(torch.nn.Module):
         return impl_params
 
     def define_hyperlayer(self,opt,dim_in,dim_out):
+        # return a Sequential
+        # layers to generate the parameter of the implicit layers: 
+        # [(None, 512), (512, 512), (512, 512), (512, 512), (512, 512), (512, None)]
+        # first None will be replaced by opt.latent_dim (512)
+        # last None will be replaced by (dim_in+1)*dim_out, which is weight and bias
         L = util.get_layer_dims(opt.arch.layers_hyper)
         hyperlayer = []
         for li,(k_in,k_out) in enumerate(L):
@@ -67,6 +83,7 @@ class Generator(torch.nn.Module):
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
         feat_dim = opt.arch.layers_impl[-1]
         impl_layers = edict()
+        # each one is a list of BatchLinear layer
         impl_layers.impl = self.hyperlayer_forward(opt,latent,self.hyper_impl,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
         impl_layers.level = self.hyperlayer_forward(opt,latent,self.hyper_level,opt.arch.layers_level,k0=feat_dim)
         impl_layers.rgb = self.hyperlayer_forward(opt,latent,self.hyper_rgb,opt.arch.layers_rgb,k0=feat_dim)
@@ -81,7 +98,11 @@ class Generator(torch.nn.Module):
             if li==0: k_in = k0
             if interm_coord and li>0: k_in += k0
             hyperlayer = module[li]
+            # get the params from the hyper layers and latent code
+            # TODO: this is the place where I want to do clustering
+            # maybe I want to remove layernorm, and seperate rgb and sdf
             out = hyperlayer.forward(latent).view(batch_size,k_in+1,k_out)
+            # use the params to build layers
             impl_layers.append(BatchLinear(weight=out[:,1:],bias=out[:,:1]))
         return impl_layers
 
@@ -92,7 +113,9 @@ class Renderer(torch.nn.Module):
         self.define_ray_LSTM(opt)
 
     def define_ray_LSTM(self,opt):
+        # feature before rgb and sdf head
         feat_dim = opt.arch.layers_impl[-1]
+        # LSTM hidden_size=opt.arch.lstm_dim
         self.ray_lstm = torch.nn.LSTMCell(input_size=feat_dim,hidden_size=opt.arch.lstm_dim)
         self.lstm_pred = torch.nn.Linear(opt.arch.lstm_dim,1)
         # initialize LSTM
@@ -103,6 +126,7 @@ class Renderer(torch.nn.Module):
 
     def forward(self,opt,impl_func,pose,intr=None,ray_idx=None):
         batch_size = len(pose)
+        # in world frame, intrinsics are for perspective camera
         center,ray = camera.get_center_and_ray(opt,pose,intr=intr) # [B,HW,3]
         if ray_idx is not None:
             gather_idx = ray_idx[...,None].repeat(1,1,3)
@@ -125,16 +149,20 @@ class Renderer(torch.nn.Module):
         # final endpoint (supposedly crossing the zero-isosurface)
         points_3D = camera.get_3D_points_from_depth(opt,center,ray,depth) # [B,HW,3]
         level = impl_func.forward(opt,points_3D) # [B,HW,1]
+        # can either output occupancy or sdf
         mask = level.sigmoid() if opt.impl.occup else (level<=0).float()
         level_all.append(level)
-        level_all = torch.cat(level_all,dim=-1) # [B,HW,N]
+        level_all = torch.cat(level_all,dim=-1) # [B,HW,N], like [B, HW, 11], including all sdf or occ along the ray
         # get isosurface=0 intersection
         func = lambda x: impl_func.forward(opt,x)
+        # if the reg doesn't work then points_3D is just close to either second last or last point
+        # depending on whether both sdf are <0 or >0. The bisection would push towards one end.
         points_3D_iso0 = self.bisection(x0=points_3D_2ndlast,x1=points_3D,y0=level_2ndlast,y1=level,
                                         func=func,num_iter=opt.impl.bisection_steps) # [B,HW,3]
         level,feat = impl_func.forward(opt,points_3D_iso0,get_feat=True) # [B,HW,K]
         depth = camera.get_depth_from_3D_points(opt,center,ray,points_3D_iso0) # [B,HW,1]
         rgb = impl_func.rgb(feat).tanh_() # [B,HW,3]
+        # depth is ray length here
         return rgb,depth,level,mask,level_all # [B,HW,K]
 
     def bisection(self,x0,x1,y0,y1,func,num_iter):
@@ -153,6 +181,10 @@ class ImplicitFunction(torch.nn.Module):
         super().__init__()
         self.opt = opt
         self.impl_layers = impl_layers
+        # self.impl: a modulelist that contains sequentials, 
+        # each sequential is a layer of implicit function,
+        # where it consists of BatchLinear+LayerNorm+ReLU
+        # self.level and self.rgb are two heads
         self.define_network(opt,impl_layers)
 
     def define_network(self,opt,impl_layers):
@@ -204,7 +236,7 @@ class ImplicitFunction(torch.nn.Module):
         return points_enc
 
 class BatchLinear(torch.nn.Module):
-
+    # use the given weight and bias to do bmm and bias sum
     def __init__(self,weight,bias=None):
         super().__init__()
         self.weight = weight

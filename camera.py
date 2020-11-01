@@ -8,7 +8,7 @@ from easydict import EasyDict as edict
 import util
 
 class Pose():
-
+    # a pose class with util methods
     def __call__(self,R=None,t=None):
         assert(R is not None or t is not None)
         if R is None:
@@ -66,6 +66,9 @@ def img2cam(X,cam_intr):
 def cam2world(X,pose):
     X_hom = to_hom(X)
     pose_inv = Pose().invert(pose)
+    # pose_inv.transpose(-1,-2): [B, 4, 3]
+    # originally, p_cam' = [R|t] @ [p_world, 1]'
+    # therefore, p_world = [p_cam, 1] @ inv([R|t])'
     return X_hom@pose_inv.transpose(-1,-2)
 
 def angle_to_rotation_matrix(a,axis):
@@ -100,13 +103,17 @@ def get_camera_grid(opt,batch_size,intr=None):
 
 def get_center_and_ray(opt,pose,intr=None,offset=None): # [HW,2]
     batch_size = len(pose)
+    # grid 3D is the 3D location of the 2D pixels (on image plane, d=1)
+    # under camera frame
     xy_grid,grid_3D = get_camera_grid(opt,batch_size,intr=intr) # [B,HW,3]
     # compute center and ray
     if opt.camera.model=="perspective":
         if offset is not None:
             grid_3D[...,:2] += offset
+        # camera pose, [0, 0, 0] under camera frame
         center_3D = torch.zeros(batch_size,1,3,device=opt.device) # [B,1,3]
     elif opt.camera.model=="orthographic":
+        # different ray has different camera center
         center_3D = torch.cat([xy_grid,torch.zeros_like(xy_grid[...,:1])],dim=-1) # [B,HW,3]
     # transform from camera to world coordinates
     grid_3D = cam2world(grid_3D,pose) # [B,HW,3]
