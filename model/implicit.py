@@ -192,7 +192,7 @@ class ImplicitFunction(torch.nn.Module):
             if li!=len(impl_layers)-1:
                 layer = torch.nn.Sequential(
                     linear,
-                    torch.nn.LayerNorm(linear.bias.shape[-1],elementwise_affine=False),
+                    #torch.nn.LayerNorm(linear.bias.shape[-1],elementwise_affine=False),
                     torch.nn.ReLU(inplace=False), # avoid backprop issues with higher-order gradients
                 )
             else:
