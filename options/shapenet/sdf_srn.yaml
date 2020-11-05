@@ -2,8 +2,8 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 3
-load: output/pretrain/shapenet-3/latest.ckpt
+name: 4
+load: 
 
 arch:
     enc_network: resnet18
@@ -17,11 +17,6 @@ data:
         cat: car
         train_view:
         test_view: 1
-    augment:
-        brightness: # 0.2
-        contrast: # 0.2
-        saturation: # 0.2
-        hue: # 0.5
 
 impl:
     sdf_samples: 5
