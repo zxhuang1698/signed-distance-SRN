@@ -2,8 +2,8 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 16
-load: output/pretrain/shapenet-16/latest.ckpt
+name: 17
+load: output/pretrain/shapenet-17/latest.ckpt
 
 arch:
     enc_network: resnet18
