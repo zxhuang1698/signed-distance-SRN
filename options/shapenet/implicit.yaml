@@ -5,7 +5,7 @@ latent_dim: 512
 
 arch:
     layers_hyper: [null,512,512,512,512,512,null]
-    layers_rgb: [null,128,128,3]
+    layers_rgb: [null,128,128,128,3]
     layers_level: [null,128,128,128,128,1]
     interm_coord: true
     lstm_dim: 32
