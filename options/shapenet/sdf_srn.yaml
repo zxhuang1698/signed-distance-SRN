@@ -2,8 +2,8 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 10
-load: 
+name: 11
+load: #output/pretrain/shapenet-5/latest.ckpt
 
 arch:
     enc_network: resnet18
@@ -14,10 +14,14 @@ data:
     num_workers: 4
     bgcolor: 1
     shapenet:
-        num_classes: 1
         cat: car
         train_view:
         test_view: 1
+    augment:
+        brightness: # 0.2
+        contrast: # 0.2
+        saturation: # 0.2
+        hue: # 0.5
 
 impl:
     sdf_samples: 5
@@ -26,11 +30,10 @@ impl:
     importance: true
 
 loss_weight:
-    reg_type: l2
-    cat_reg: 
     render: 1
     shape_silh: 3
     ray_intsc: 1
+    cube: 1
     ray_free: 0.1
     eikonal: 0.01
 

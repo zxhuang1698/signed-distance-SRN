@@ -23,11 +23,6 @@ class Dataset(base.Dataset):
             chair="03001627",
             plane="02691156",
         )
-        self.cat2label = {}
-        accum_idx = 0
-        for _,value in self.cat_id_all.items():
-            self.cat2label[value] = accum_idx
-            accum_idx += 1
         self.cat_id = list(self.cat_id_all.values()) if opt.data.shapenet.cat is None else \
                       [v for k,v in self.cat_id_all.items() if k in opt.data.shapenet.cat.split(",")]
         self.path = "data/NMR_Dataset"
@@ -85,14 +80,12 @@ class Dataset(base.Dataset):
         )
         # load images and compute distance transform
         image = self.images[idx] if opt.data.preload else self.get_image(opt,idx)
-        cat_label = self.get_category(opt,idx)
         rgb,mask = self.preprocess_image(opt,image,aug=aug)
         dt = self.compute_dist_transform(opt,mask,intr=intr)
         sample.update(
             rgb_input_map=rgb,
             mask_input_map=mask,
             dt_input_map=dt,
-            category_label=cat_label,
         )
         # vectorize images (and randomly sample)
         rgb = rgb.permute(1,2,0).view(opt.H*opt.W,3)
@@ -120,11 +113,6 @@ class Dataset(base.Dataset):
         mask = PIL.Image.open(mask_fname).split()[0]
         image = PIL.Image.merge("RGBA",list(image.split())+[mask])
         return image
-    
-    def get_category(self,opt,idx):
-        c,_,_,_ = self.list[idx]
-        label = int(self.cat2label[c])
-        return label
 
     def preprocess_image(self,opt,image,aug=None):
         if aug is not None:
