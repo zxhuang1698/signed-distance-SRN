@@ -37,22 +37,26 @@ class Generator(torch.nn.Module):
     def define_network(self,opt):
         # 3 + 6 * L
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
+        # dim before rgb and sdf head
+        feat_dim = opt.arch.layers_impl[-1]
         # each is a module list, every element is a sequential to generate params of specific layer
-        self.hyper_level = self.get_module_params(opt,opt.arch.layers_level,k0=point_dim,interm_coord=opt.arch.interm_coord)
-        self.hyper_rgb = self.get_module_params(opt,opt.arch.layers_rgb,k0=point_dim,interm_coord=opt.arch.interm_coord)
+        self.hyper_impl = self.get_module_params(opt,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
+        self.hyper_level = self.get_module_params(opt,opt.arch.layers_level,k0=feat_dim)
+        self.hyper_rgb = self.get_module_params(opt,opt.arch.layers_rgb,k0=feat_dim)
 
     def get_module_params(self,opt,layers,k0,interm_coord=False):
         impl_params = torch.nn.ModuleList()
         # define layers that generate the params of following layers:
-        # sdf: [(None, 128), (128, 128), (128, 128), (128, 128)]
-        # rgb: [(None, 128), (128, 128), (128, 128), (128, 128)]
+        # sdf: [(None, 1)]
+        # rgb: [(None, 3)]
+        # implicit: [(None, 128), (128, 128), (128, 128), (128, 128)]
         # None will be replaced by k0
         # Then it's [(in, out), (in, out), ...]. interm_coord means
         # feed position info into every hidden layer just like DVR
         L = util.get_layer_dims(layers)
         for li,(k_in,k_out) in enumerate(L):
             if li==0: k_in = k0
-            if interm_coord and li>0 and li<len(L)-1:
+            if interm_coord and li>0:
                 k_in += 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
             params = self.define_hyperlayer(opt,dim_in=k_in,dim_out=k_out)
             impl_params.append(params)
@@ -77,28 +81,35 @@ class Generator(torch.nn.Module):
 
     def forward(self,opt,latent):
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
+        feat_dim = opt.arch.layers_impl[-1]
         impl_layers = edict()
         # each one is a list of BatchLinear layer
-        impl_layers.level = self.hyperlayer_forward(opt,latent,self.hyper_level,opt.arch.layers_level,k0=point_dim,interm_coord=opt.arch.interm_coord)
-        impl_layers.rgb = self.hyperlayer_forward(opt,latent,self.hyper_rgb,opt.arch.layers_rgb,k0=point_dim,interm_coord=opt.arch.interm_coord)
+        impl_layers.impl,self.impl_weights = self.hyperlayer_forward(opt,latent,self.hyper_impl,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord,return_weights=True)
+        impl_layers.level,self.level_weights = self.hyperlayer_forward(opt,latent,self.hyper_level,opt.arch.layers_level,k0=feat_dim,return_weights=True)
+        impl_layers.rgb = self.hyperlayer_forward(opt,latent,self.hyper_rgb,opt.arch.layers_rgb,k0=feat_dim)
         impl_func = ImplicitFunction(opt,impl_layers)
         return impl_func
 
-    def hyperlayer_forward(self,opt,latent,module,layers,k0,interm_coord=False):
+    def hyperlayer_forward(self,opt,latent,module,layers,k0,interm_coord=False,return_weights=False):
         batch_size = len(latent)
         impl_layers = []
+        weights_reg = []
         L = util.get_layer_dims(layers)
         for li,(k_in,k_out) in enumerate(L):
             if li==0: k_in = k0
-            if interm_coord and li>0 and li<len(L)-1: k_in += k0
+            if interm_coord and li>0: k_in += k0
             hyperlayer = module[li]
             # get the params from the hyper layers and latent code
             # TODO: this is the place where I want to do clustering
             # maybe I want to remove layernorm, and seperate rgb and sdf
-            out = hyperlayer.forward(latent).view(batch_size,k_in+1,k_out)
+            out_raw = hyperlayer.forward(latent)
+            if return_weights:
+                weights_reg.append(out_raw)
+            out = out_raw.view(batch_size,k_in+1,k_out)
             # use the params to build layers
             impl_layers.append(BatchLinear(weight=out[:,1:],bias=out[:,:1]))
-        return impl_layers
+        if return_weights: return impl_layers, weights_reg
+        else: return impl_layers
 
 class Renderer(torch.nn.Module):
 
@@ -108,7 +119,7 @@ class Renderer(torch.nn.Module):
 
     def define_ray_LSTM(self,opt):
         # feature before rgb and sdf head
-        feat_dim = opt.arch.layers_level[-2]
+        feat_dim = opt.arch.layers_impl[-1]
         # LSTM hidden_size=opt.arch.lstm_dim
         self.ray_lstm = torch.nn.LSTMCell(input_size=feat_dim,hidden_size=opt.arch.lstm_dim)
         self.lstm_pred = torch.nn.Linear(opt.arch.lstm_dim,1)
@@ -153,9 +164,9 @@ class Renderer(torch.nn.Module):
         # depending on whether both sdf are <0 or >0. The bisection would push towards one end.
         points_3D_iso0 = self.bisection(x0=points_3D_2ndlast,x1=points_3D,y0=level_2ndlast,y1=level,
                                         func=func,num_iter=opt.impl.bisection_steps) # [B,HW,3]
-        level,rgb = impl_func.forward(opt,points_3D_iso0,get_rgb=True) # [B,HW,K]
+        level,feat = impl_func.forward(opt,points_3D_iso0,get_feat=True) # [B,HW,K]
         depth = camera.get_depth_from_3D_points(opt,center,ray,points_3D_iso0) # [B,HW,1]
-        rgb = rgb.tanh_() # [B,HW,3]
+        rgb = impl_func.rgb(feat).tanh_() # [B,HW,3]
         # depth is ray length here
         return rgb,depth,level,mask,level_all # [B,HW,K]
 
@@ -180,55 +191,43 @@ class ImplicitFunction(torch.nn.Module):
         # where it consists of BatchLinear+LayerNorm+ReLU
         # self.level and self.rgb are two heads
         self.define_network(opt,impl_layers)
-        # check self.level and self.rgb
 
     def define_network(self,opt,impl_layers):
+        self.impl = torch.nn.ModuleList()
+        for linear in impl_layers.impl:
+            layer = torch.nn.Sequential(
+                linear,
+                torch.nn.LayerNorm(linear.bias.shape[-1],elementwise_affine=False),
+                torch.nn.ReLU(inplace=False), # avoid backprop issues with higher-order gradients
+            )
+            self.impl.append(layer)
         self.level = self.define_heads(opt,impl_layers.level)
         self.rgb = self.define_heads(opt,impl_layers.rgb)
 
     def define_heads(self,opt,impl_layers):
-        layers = torch.nn.ModuleList()
+        layers = []
         for li,linear in enumerate(impl_layers):
+            layers.append(linear)
             if li!=len(impl_layers)-1:
-                layer = torch.nn.Sequential(
-                    linear,
-                    #torch.nn.LayerNorm(linear.bias.shape[-1],elementwise_affine=False),
-                    torch.nn.ReLU(inplace=False), # avoid backprop issues with higher-order gradients
-                )
-            else:
-                layer = linear
-            layers.append(layer)
-        return layers
+                layers.append(torch.nn.LayerNorm(linear.bias.shape[-1],elementwise_affine=False))
+                layers.append(torch.nn.ReLU(inplace=False)) # avoid backprop issues with higher-order gradients
+        return torch.nn.Sequential(*layers)
 
-    def forward(self,opt,points_3D,get_feat=False,get_rgb=False): # [B,...,3]
+    def forward(self,opt,points_3D,get_feat=False): # [B,...,3]
         if opt.impl.posenc_L:
             # positional encoding from NeRF
             points_enc = self.positional_encoding(opt,points_3D) # [B,...,6L]
             points_enc = torch.cat([points_enc,points_3D],dim=-1) # [B,...,6L+3]
         else: points_enc = points_3D
-        feat_level = points_enc
-        feat_rgb = points_enc
-        
-        # extract implicit features on level branch
-        for li,layer in enumerate(self.level[:-1]):
+        feat = points_enc
+        # extract implicit features
+        for li,layer in enumerate(self.impl):
             if opt.arch.interm_coord and li>0:
-                feat_level = torch.cat([feat_level,points_enc],dim=-1)
-            feat_level = layer(feat_level)
-        level = self.level[-1](feat_level)
-        
-        # extract rgb
-        if get_rgb:
-            for li,layer in enumerate(self.rgb[:-1]):
-                if opt.arch.interm_coord and li>0:
-                    feat_rgb = torch.cat([feat_rgb,points_enc],dim=-1)
-                feat_rgb = layer(feat_rgb)
-            rgb = self.rgb[-1](feat_rgb)
-            
-        if get_feat and get_rgb: return level, feat_level, rgb
-        elif get_feat: return level, feat_level
-        elif get_rgb: return level, rgb
-        else: return level
-        
+                feat = torch.cat([feat,points_enc],dim=-1)
+            feat = layer(feat)
+        level = self.level(feat)
+        return (level,feat) if get_feat else level
+
     def positional_encoding(self,opt,points_3D): # [B,...,3]
         shape = points_3D.shape
         points_enc = []
