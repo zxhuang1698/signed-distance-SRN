@@ -2,7 +2,7 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 18
+name: 19
 load: #output/pretrain/shapenet-17/latest.ckpt
 
 arch:
