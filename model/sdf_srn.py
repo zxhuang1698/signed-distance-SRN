@@ -233,11 +233,45 @@ class Graph(implicit.Graph):
         if opt.loss_weight.eikonal is not None:
             var.sdf_grad_norm = self.sdf_gradient_norm(opt,var.impl_func,batch_size=len(var.idx))
             loss.eikonal = self.MSE_loss(var.sdf_grad_norm,1)
+        if opt.loss_weight.cat_reg is not None:
+            loss.cat_reg = self.category_reg_loss(opt,var)
         return loss
 
     def unit_cube_loss(self,opt,var,margin=0.6):
         loss = self.L1_loss((var.foreground_pts-margin).relu_())
         loss += self.L1_loss((-var.foreground_pts-margin).relu_())
+        return loss
+
+    def center_dist(self, opt, var, shape_code_list):
+        # normalize the length of each vector so the regularization won't take the 
+        # shortcut of shrinking the whole space for l1 or l2 regularization
+        loss = 0
+        shape_code = torch.cat(shape_code_list, dim=-1)
+        num_classes = opt.data.shapenet.num_classes
+        shape_code = torch.nn.functional.normalize(shape_code, dim=-1, p=2)
+        assert len(shape_code.shape) == 2
+        batch_size = shape_code.shape[0]
+        category = var.category_label
+        for i in range(num_classes):
+            avg_code = torch.mean(shape_code[category==i], dim=0, keepdim=True)
+            if opt.loss_weight.reg_type[0] == 'l':
+                power = int(opt.loss_weight.reg_type[1:])
+                diff_vec = shape_code[category==i] - avg_code
+                diff_vec = diff_vec.abs()
+                diff_vec = diff_vec**power
+                loss += diff_vec.sum()
+            elif opt.loss_weight.reg_type == 'cos':
+                avg_code_n = torch.nn.functional.normalize(avg_code, dim=1, p=2)
+                assert len(avg_code_n.shape) == 2
+                loss = (1 - (shape_code[category==i] * avg_code_n).sum(dim=1)).sum()
+            else:
+                raise NotImplementedError()
+        loss = loss / batch_size
+        return loss
+    
+    def category_reg_loss(self, opt, var):
+        shape_code_list = self.generator.impl_weights + self.generator.level_weights
+        loss = self.center_dist(opt, var, shape_code_list)
         return loss
     
     def ray_intersection_loss(self,opt,var,level_eps=0.01):

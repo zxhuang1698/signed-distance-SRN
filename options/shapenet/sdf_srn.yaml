@@ -2,8 +2,8 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 23
-load: output/pretrain/shapenet-23/latest.ckpt
+name: 24
+load: output/pretrain/shapenet/latest.ckpt
 
 arch:
     enc_network: resnet18
@@ -14,7 +14,8 @@ data:
     num_workers: 4
     bgcolor: 1
     shapenet:
-        cat: chair
+        num_classes: 1
+        cat: plane
         train_view:
         test_view: 1
     augment:
@@ -30,6 +31,8 @@ impl:
     importance: true
 
 loss_weight:
+    reg_type: l2
+    cat_reg: 
     render: 1
     shape_silh: 3
     ray_intsc: 1
