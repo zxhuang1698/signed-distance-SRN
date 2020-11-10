@@ -2,7 +2,7 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 29
+name: 30
 load: output/pretrain/shapenet/latest.ckpt
 
 arch:
@@ -36,7 +36,7 @@ loss_weight:
     render: 1
     shape_silh: 1
     ray_intsc: 1
-    cube: 1
+    cube: 0.5
     ray_free: 0.1
     eikonal: 0.01
 
