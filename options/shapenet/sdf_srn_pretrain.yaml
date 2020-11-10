@@ -2,7 +2,7 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: pretrain
-name: shapenet-34
+name: shapenet-35
 
 latent_std: 1.
 
