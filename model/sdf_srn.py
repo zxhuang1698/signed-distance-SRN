@@ -39,6 +39,7 @@ class Model(implicit.Model):
             if it==0 and training: 
                 var_viz = edict(deepcopy(self.viz_data))
                 var_viz,_ = self.evaluate_batch(opt,var_viz,ep,it)
+                _,_ = eval_3D.compute_chamfer_dist(opt,var_viz)
                 self.visualize(opt,var_viz,step=ep,split="eval")
                 self.dump_results(opt,var_viz,train=True)
             if not training: self.dump_results(opt,var,write_new=(it==0))
