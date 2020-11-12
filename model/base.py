@@ -31,7 +31,7 @@ class Model():
         self.test_data = data.Dataset(opt,split=eval_split,subset=opt.data.val_sub)
         self.test_loader = self.test_data.setup_loader(opt,shuffle=False,drop_last=False)
         self.test_loader_rand = self.test_data.setup_loader(opt,shuffle=True,drop_last=False)
-        self.viz_data = edict(next(iter(self.test_loader_rand)))
+        self.viz_data = next(iter(self.test_loader_rand))
 
     def build_networks(self,opt):
         graph = importlib.import_module("model.{}".format(opt.model))
