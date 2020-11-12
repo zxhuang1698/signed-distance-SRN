@@ -36,8 +36,9 @@ class Model(implicit.Model):
             metric_eval["dist_cov"] += dist_cov*len(var.idx)
             loader.set_postfix(loss="{:.3f}".format(loss.all))
             if it==0 and training: 
-                self.visualize(opt,var,step=ep,split="eval")
-                self.dump_results(opt,var,train=True)
+                var_viz,_ = self.evaluate_batch(opt,self.viz_data,ep,it)
+                self.visualize(opt,var_viz,step=ep,split="eval")
+                self.dump_results(opt,var_viz,train=True)
             if not training: self.dump_results(opt,var,write_new=(it==0))
         for key in loss_eval: loss_eval[key] /= len(self.test_data)
         for key in metric_eval: metric_eval[key] /= len(self.test_data)
