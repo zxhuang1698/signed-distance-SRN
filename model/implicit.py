@@ -35,7 +35,7 @@ class Estimator(torch.nn.Module):
     def __init__(self,opt):
         super().__init__()
         nf = 64
-        self.feat_multiplier = 100
+        self.feat_multiplier = 1
         feature_extractor = [
             nn.Conv2d(3, nf, kernel_size=4, stride=2, padding=1, bias=False),  # 64x64 -> 32x32
             nn.BatchNorm2d(nf),
