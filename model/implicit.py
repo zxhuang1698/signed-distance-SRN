@@ -35,8 +35,8 @@ class Estimator(torch.nn.Module):
     def __init__(self,opt):
         super().__init__()
         nf = 64
-        self.n_cameras = 3
-        self.temperature = 10
+        self.n_cameras = 8
+        self.temperature = 1
         self.cam_angles = torch.linspace(-1, 1, steps=self.n_cameras)
         feature_extractor = [
             nn.Conv2d(3, nf, kernel_size=4, stride=2, padding=1, bias=False),  # 64x64 -> 32x32
