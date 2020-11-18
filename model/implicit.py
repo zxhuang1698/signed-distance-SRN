@@ -35,26 +35,40 @@ class Estimator(torch.nn.Module):
     def __init__(self,opt):
         super().__init__()
         nf = 64
-        self.feat_multiplier = 5
+        self.n_cameras = 3
+        self.temperature = 1
+        self.cam_angles = torch.linspace(-1, 1, steps=self.n_cameras)
         feature_extractor = [
             nn.Conv2d(3, nf, kernel_size=4, stride=2, padding=1, bias=False),  # 64x64 -> 32x32
+            nn.BatchNorm2d(nf),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf, nf*2, kernel_size=4, stride=2, padding=1, bias=False),  # 32x32 -> 16x16
+            nn.BatchNorm2d(nf*2),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*2, nf*4, kernel_size=4, stride=2, padding=1, bias=False),  # 16x16 -> 8x8
+            nn.BatchNorm2d(nf*4),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*4, nf*8, kernel_size=4, stride=2, padding=1, bias=False),  # 8x8 -> 4x4
+            nn.BatchNorm2d(nf*8),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*8, nf*8, kernel_size=4, stride=1, padding=0, bias=False),  # 4x4 -> 1x1
+            nn.BatchNorm2d(nf*8),
             nn.ReLU(inplace=True),
-            nn.Conv2d(nf*8, 1, kernel_size=1, stride=1, padding=0, bias=False)
+            nn.Conv2d(nf*8, nf*8, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(nf*8),
+            nn.ReLU(inplace=True),
             ]
         self.feature_extractor = nn.Sequential(*feature_extractor)
+        self.fc = nn.Linear(nf*8, self.n_cameras)
         
     def forward(self,inputs):
         feat = self.feature_extractor(inputs)
-        output = nn.Tanh()(feat*self.feat_multiplier)
-        return output.view(inputs.shape[0],-1)
+        feat = feat.view(feat.shape[0], -1)
+        cam_scores = self.fc(feat)
+        probs = torch_F.softmax(cam_scores/self.temperature, dim=1)
+        cam_angles = self.cam_angles.to(probs.device).unsqueeze(1).detach()
+        output = torch.mm(probs,cam_angles)
+        return output
 
 # the implicit function
 class Generator(torch.nn.Module):
