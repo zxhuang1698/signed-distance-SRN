@@ -35,17 +35,22 @@ class Estimator(torch.nn.Module):
     def __init__(self,opt):
         super().__init__()
         nf = 64
-        self.feat_multiplier = 100
+        self.feat_multiplier = 10
         feature_extractor = [
             nn.Conv2d(3, nf, kernel_size=4, stride=2, padding=1, bias=False),  # 64x64 -> 32x32
+            nn.BatchNorm2d(nf),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf, nf*2, kernel_size=4, stride=2, padding=1, bias=False),  # 32x32 -> 16x16
+            nn.BatchNorm2d(nf*2),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*2, nf*4, kernel_size=4, stride=2, padding=1, bias=False),  # 16x16 -> 8x8
+            nn.BatchNorm2d(nf*4),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*4, nf*8, kernel_size=4, stride=2, padding=1, bias=False),  # 8x8 -> 4x4
+            nn.BatchNorm2d(nf*8),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*8, nf*8, kernel_size=4, stride=1, padding=0, bias=False),  # 4x4 -> 1x1
+            nn.BatchNorm2d(nf*8),
             nn.ReLU(inplace=True),
             nn.Conv2d(nf*8, 1, kernel_size=1, stride=1, padding=0, bias=False)
             ]
