@@ -80,7 +80,8 @@ class Dataset(base.Dataset):
         if aug is not None:
             pose = self.augment_camera(opt,pose,aug,pose_cam=pose_cam)
         sample.update(
-            pose=pose,
+            #pose=pose,
+            pose_gt=pose,
             intr=intr,
         )
         # load images and compute distance transform
