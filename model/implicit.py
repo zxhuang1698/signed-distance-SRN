@@ -78,6 +78,7 @@ class Generator(torch.nn.Module):
         self.define_network(opt)
 
     def define_network(self,opt):
+        self.code_length = 0
         # 3 + 6 * L
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
         # dim before rgb and sdf head
@@ -86,7 +87,17 @@ class Generator(torch.nn.Module):
         self.hyper_impl = self.get_module_params(opt,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
         self.hyper_level = self.get_module_params(opt,opt.arch.layers_level,k0=feat_dim)
         self.hyper_rgb = self.get_module_params(opt,opt.arch.layers_rgb,k0=feat_dim)
+        self.get_code_length(opt,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
+        self.get_code_length(opt,opt.arch.layers_level,k0=feat_dim)
 
+    def get_code_length(self,opt,layers,k0,interm_coord=False):
+        L = util.get_layer_dims(layers)
+        for li,(k_in,k_out) in enumerate(L):
+            if li==0: k_in = k0
+            if interm_coord and li>0:
+                k_in += 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
+            self.code_length += (k_in+1)*k_out
+    
     def get_module_params(self,opt,layers,k0,interm_coord=False):
         impl_params = torch.nn.ModuleList()
         # define layers that generate the params of following layers:
