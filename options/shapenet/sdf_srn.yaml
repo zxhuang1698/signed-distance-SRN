@@ -2,7 +2,7 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 75
+name: 83
 load: output/pretrain/shapenet-57/latest.ckpt
 
 arch:
@@ -15,7 +15,7 @@ data:
     bgcolor: 1
     shapenet:
         num_classes: 1
-        cat: chair
+        cat: car
         train_view: 1
         test_view: 1
     augment:
@@ -32,7 +32,7 @@ impl:
 
 loss_weight:
     reg_type: l2
-    cat_reg: 5.e-6
+    cat_reg: 
     render: 1
     shape_silh: 2
     ray_intsc: 1
