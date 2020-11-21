@@ -93,7 +93,7 @@ class Model(implicit.Model):
     def log_scalars(self,opt,var,loss,metric=None,step=0,split="train"):
         if split=="train":
             dist_acc,dist_cov = eval_3D.compute_chamfer_dist(opt,var)
-            metric = dict(dist_acc=dist_acc,dist_cov=dist_cov,rot_err=var.rot_err,trans_err=var.trans_err)
+            metric = dict(dist_acc=dist_acc,dist_cov=dist_cov)
         super().log_scalars(opt,var,loss,metric=metric,step=step,split=split)
 
     @torch.no_grad()
@@ -191,30 +191,10 @@ class Graph(implicit.Graph):
         network = getattr(torchvision.models,opt.arch.enc_network)
         self.encoder = network(pretrained=opt.arch.enc_pretrained)
         self.encoder.fc = torch.nn.Linear(self.encoder.fc.in_features,opt.latent_dim)
-        if opt.loss_weight.cat_reg is not None:
-            self.centers_init = False
-            self.centers_param = torch.nn.Parameter(torch.zeros(opt.data.shapenet.num_classes, self.generator.code_length), requires_grad=True)
 
     def forward(self,opt,var,training=False):
         batch_size = len(var.idx)
         var.latent_enc = var.latent if "latent" in var else self.encoder(var.rgb_input_map)
-        # predict the viewpoint
-        angle_y = self.estimator(var.rgb_input_map) * np.pi
-        angle_x = torch.ones(angle_y.shape).to(angle_y.device) * -0.52359885 
-        angle_z = torch.ones(angle_y.shape).to(angle_y.device) * 3.14159261
-        angles = torch.cat([angle_x, angle_y, angle_z], dim=1)
-        rotmat = camera.euler2mat(angles)
-        translations = torch.tensor([0.,0.,opt.camera.dist]).to(angle_y.device).view(1,3,1).expand(batch_size,3,1)
-        var.pose = torch.cat([rotmat, translations], dim=-1)
-        assert var.pose.shape == var.pose_gt.shape
-        # test the viewpoint estimation accuracy
-        combined_rotation = torch.bmm(var.pose_gt[:, :, :-1], var.pose[:, :, :-1].transpose(1,2))
-        trans_dist = (var.pose_gt[:, :, -1] - var.pose[:, :, -1]).abs()
-        with torch.no_grad():
-            geodesic_cos = (combined_rotation[:,0,0] + combined_rotation[:,1,1] + combined_rotation[:,2,2] - 1) / 2
-            geodesic_cos.clamp_(-1,1)
-            var.rot_err = torch.mean(torch.acos(geodesic_cos)/np.pi*180)
-            var.trans_err = torch.mean(trans_dist)
         var.impl_func = self.generator.forward(opt,var.latent_enc)
         if opt.impl.rand_sample and training:
             # sample random rays for optimization
@@ -258,7 +238,7 @@ class Graph(implicit.Graph):
             var.sdf_grad_norm = self.sdf_gradient_norm(opt,var.impl_func,batch_size=len(var.idx))
             loss.eikonal = self.MSE_loss(var.sdf_grad_norm,1)
         if opt.loss_weight.cat_reg is not None:
-            loss.cat_reg = self.category_reg_loss(opt,var,training)
+            loss.cat_reg = self.category_reg_loss(opt,var)
         return loss
 
     def unit_cube_loss(self,opt,var,margin=0.6):
@@ -266,50 +246,36 @@ class Graph(implicit.Graph):
         loss += self.L1_loss((-var.foreground_pts-margin).relu_())
         return loss
 
-    def center_dist(self, opt, var, shape_code_list, training):
+    def center_dist(self, opt, var, shape_code_list):
         # normalize the length of each vector so the regularization won't take the 
         # shortcut of shrinking the whole space for l1 or l2 regularization
+        loss = 0
         shape_code = torch.cat(shape_code_list, dim=-1)
-        loss = torch.tensor(0.).to(shape_code.device)
         num_classes = opt.data.shapenet.num_classes
         shape_code = torch.nn.functional.normalize(shape_code, dim=-1, p=2)
         assert len(shape_code.shape) == 2
         batch_size = shape_code.shape[0]
         category = var.category_label
-        
-        # initialize the centers if needed
-        if training and (not self.centers_init):
-            avg_codes = []
-            log.info("initializing the centers...")
-            for i in range(num_classes):
-                avg_code = torch.mean(shape_code[category==i], dim=0, keepdim=True)
-                avg_codes.append(avg_code)
-            avg_codes = torch.cat(avg_codes, dim=0)
-            self.centers_offset = avg_codes.detach()
-            self.centers_init = True
-        
-        # calculate the distance between each datapoint and the centers  
-        if self.centers_init:
-            centers = self.centers_param + self.centers_offset
-            for i in range(num_classes):
-                if opt.loss_weight.reg_type[0] == 'l':
-                    power = int(opt.loss_weight.reg_type[1:])
-                    diff_vec = shape_code[category==i] - centers[i].unsqueeze(0)
-                    diff_vec = diff_vec.abs()
-                    diff_vec = diff_vec**power
-                    loss += diff_vec.sum()
-                elif opt.loss_weight.reg_type == 'cos':
-                    avg_code_n = torch.nn.functional.normalize(centers[i].unsqueeze(0), dim=1, p=2)
-                    assert len(avg_code_n.shape) == 2
-                    loss += (1 - (shape_code[category==i] * avg_code_n).sum(dim=1)).sum()
-                else:
-                    raise NotImplementedError()
-            loss = loss / batch_size
+        for i in range(num_classes):
+            avg_code = torch.mean(shape_code[category==i], dim=0, keepdim=True)
+            if opt.loss_weight.reg_type[0] == 'l':
+                power = int(opt.loss_weight.reg_type[1:])
+                diff_vec = shape_code[category==i] - avg_code
+                diff_vec = diff_vec.abs()
+                diff_vec = diff_vec**power
+                loss += diff_vec.sum()
+            elif opt.loss_weight.reg_type == 'cos':
+                avg_code_n = torch.nn.functional.normalize(avg_code, dim=1, p=2)
+                assert len(avg_code_n.shape) == 2
+                loss = (1 - (shape_code[category==i] * avg_code_n).sum(dim=1)).sum()
+            else:
+                raise NotImplementedError()
+        loss = loss / batch_size
         return loss
     
-    def category_reg_loss(self, opt, var, training):
+    def category_reg_loss(self, opt, var):
         shape_code_list = self.generator.impl_weights + self.generator.level_weights
-        loss = self.center_dist(opt, var, shape_code_list, training)
+        loss = self.center_dist(opt, var, shape_code_list)
         return loss
     
     def ray_intersection_loss(self,opt,var,level_eps=0.01):

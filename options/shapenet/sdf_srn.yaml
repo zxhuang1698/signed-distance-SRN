@@ -2,8 +2,8 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 82
-load: output/pretrain/shapenet-57/latest.ckpt
+name: 90
+load: output/pretrain/shapenet-33/latest.ckpt
 
 arch:
     enc_network: resnet18
@@ -14,8 +14,8 @@ data:
     num_workers: 6
     bgcolor: 1
     shapenet:
-        num_classes: 1
-        cat: chair
+        num_classes: 3
+        cat: car,plane,chair
         train_view: 1
         test_view: 1
     augment:
@@ -32,7 +32,7 @@ impl:
 
 loss_weight:
     reg_type: l2
-    cat_reg: 1.e+3
+    cat_reg: 1e-2
     render: 1
     shape_silh: 2
     ray_intsc: 1
@@ -52,7 +52,7 @@ visdom:
 
 freq:
     scalar: 200 # iterations
-    vis: 100 # iterations
-    eval: 10 # epochs
-    ckpt: 20 # epochs
+    vis: 1000 # iterations
+    eval: 1 # epochs
+    ckpt: 2 # epochs
     ckpt_latest: 2000 # iterations

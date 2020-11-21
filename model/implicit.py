@@ -2,7 +2,6 @@ import numpy as np
 import os,sys,time
 import torch
 import torch.nn.functional as torch_F
-import torch.nn as nn
 from easydict import EasyDict as edict
 
 from . import base
@@ -22,53 +21,11 @@ class Graph(base.Graph):
 
     def __init__(self,opt):
         super().__init__(opt)
-        self.estimator = Estimator(opt)
         self.generator = Generator(opt)
         self.renderer = Renderer(opt)
 
     def forward(self,opt,var,training=False):
         raise NotImplementedError
-
-# the viewpoint estimating network
-class Estimator(torch.nn.Module):
-
-    def __init__(self,opt):
-        super().__init__()
-        nf = 64
-        self.n_cameras = 8
-        self.temperature = 1
-        self.cam_angles = torch.linspace(-1, 1, steps=self.n_cameras)
-        feature_extractor = [
-            nn.Conv2d(3, nf, kernel_size=4, stride=2, padding=1, bias=False),  # 64x64 -> 32x32
-            nn.BatchNorm2d(nf),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(nf, nf*2, kernel_size=4, stride=2, padding=1, bias=False),  # 32x32 -> 16x16
-            nn.BatchNorm2d(nf*2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(nf*2, nf*4, kernel_size=4, stride=2, padding=1, bias=False),  # 16x16 -> 8x8
-            nn.BatchNorm2d(nf*4),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(nf*4, nf*8, kernel_size=4, stride=2, padding=1, bias=False),  # 8x8 -> 4x4
-            nn.BatchNorm2d(nf*8),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(nf*8, nf*8, kernel_size=4, stride=1, padding=0, bias=False),  # 4x4 -> 1x1
-            nn.BatchNorm2d(nf*8),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(nf*8, nf*8, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(nf*8),
-            nn.ReLU(inplace=True),
-            ]
-        self.feature_extractor = nn.Sequential(*feature_extractor)
-        self.fc = nn.Linear(nf*8, self.n_cameras)
-        
-    def forward(self,inputs):
-        feat = self.feature_extractor(inputs)
-        feat = feat.view(feat.shape[0], -1)
-        cam_scores = self.fc(feat)
-        probs = torch_F.softmax(cam_scores/self.temperature, dim=1)
-        cam_angles = self.cam_angles.to(probs.device).unsqueeze(1).detach()
-        output = torch.mm(probs,cam_angles)
-        return output
 
 # the implicit function
 class Generator(torch.nn.Module):
@@ -78,7 +35,6 @@ class Generator(torch.nn.Module):
         self.define_network(opt)
 
     def define_network(self,opt):
-        self.code_length = 0
         # 3 + 6 * L
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
         # dim before rgb and sdf head
@@ -87,17 +43,7 @@ class Generator(torch.nn.Module):
         self.hyper_impl = self.get_module_params(opt,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
         self.hyper_level = self.get_module_params(opt,opt.arch.layers_level,k0=feat_dim)
         self.hyper_rgb = self.get_module_params(opt,opt.arch.layers_rgb,k0=feat_dim)
-        self.get_code_length(opt,opt.arch.layers_impl,k0=point_dim,interm_coord=opt.arch.interm_coord)
-        self.get_code_length(opt,opt.arch.layers_level,k0=feat_dim)
 
-    def get_code_length(self,opt,layers,k0,interm_coord=False):
-        L = util.get_layer_dims(layers)
-        for li,(k_in,k_out) in enumerate(L):
-            if li==0: k_in = k0
-            if interm_coord and li>0:
-                k_in += 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
-            self.code_length += (k_in+1)*k_out
-    
     def get_module_params(self,opt,layers,k0,interm_coord=False):
         impl_params = torch.nn.ModuleList()
         # define layers that generate the params of following layers:
