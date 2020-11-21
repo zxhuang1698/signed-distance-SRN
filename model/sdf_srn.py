@@ -93,7 +93,7 @@ class Model(implicit.Model):
     def log_scalars(self,opt,var,loss,metric=None,step=0,split="train"):
         if split=="train":
             dist_acc,dist_cov = eval_3D.compute_chamfer_dist(opt,var)
-            metric = dict(dist_acc=dist_acc,dist_cov=dist_cov)
+            metric = dict(dist_acc=dist_acc,dist_cov=dist_cov,rot_err=var.rot_err,trans_err=var.trans_err)
         super().log_scalars(opt,var,loss,metric=metric,step=step,split=split)
 
     @torch.no_grad()
@@ -195,6 +195,23 @@ class Graph(implicit.Graph):
     def forward(self,opt,var,training=False):
         batch_size = len(var.idx)
         var.latent_enc = var.latent if "latent" in var else self.encoder(var.rgb_input_map)
+        # predict the viewpoint
+        angle_y = self.estimator(var.rgb_input_map) * np.pi
+        angle_x = torch.ones(angle_y.shape).to(angle_y.device) * -0.52359885 
+        angle_z = torch.ones(angle_y.shape).to(angle_y.device) * 3.14159261
+        angles = torch.cat([angle_x, angle_y, angle_z], dim=1)
+        rotmat = camera.euler2mat(angles)
+        translations = torch.tensor([0.,0.,opt.camera.dist]).to(angle_y.device).view(1,3,1).expand(batch_size,3,1)
+        var.pose = torch.cat([rotmat, translations], dim=-1)
+        assert var.pose.shape == var.pose_gt.shape
+        # test the viewpoint estimation accuracy
+        combined_rotation = torch.bmm(var.pose_gt[:, :, :-1], var.pose[:, :, :-1].transpose(1,2))
+        trans_dist = (var.pose_gt[:, :, -1] - var.pose_gt[:, :, -1]).abs()
+        with torch.no_grad():
+            geodesic_cos = (combined_rotation[:,0,0] + combined_rotation[:,1,1] + combined_rotation[:,2,2] - 1) / 2
+            geodesic_cos.clamp_(-1,1)
+            var.rot_err = torch.mean(torch.acos(geodesic_cos)/np.pi*180)
+            var.trans_err = torch.mean(trans_dist)
         var.impl_func = self.generator.forward(opt,var.latent_enc)
         if opt.impl.rand_sample and training:
             # sample random rays for optimization
@@ -306,7 +323,7 @@ class Graph(implicit.Graph):
         num_rays = var.ray_idx.shape[1] if "ray_idx" in var else opt.H*opt.W
         # [B,HW,N,1]
         depth_samples = torch.rand(batch_size,num_rays,opt.impl.sdf_samples,1,device=opt.device)*(depth_max-depth_min)+depth_min 
-        center,ray = camera.get_center_and_ray(opt,var.pose,intr=var.intr)
+        center,ray = camera.get_center_and_ray(opt,var.pose.detach(),intr=var.intr)
         if "ray_idx" in var:
             # var.ray_idx: [B, 1024]
             # gather_idx: [B, 1024, 3]
@@ -331,7 +348,7 @@ class Graph(implicit.Graph):
                 # u / ||u|| * D(u)
                 offset = torch_F.normalize(grid_3D[...,:2],dim=-1)*var.dt_input_map.view(batch_size,-1,1) # [B,HW,2]
                 # v = u + u / ||u|| * D(u)
-                _,ray0 = camera.get_center_and_ray(opt,var.pose,intr=var.intr,offset=offset) # [B,HW,3]
+                _,ray0 = camera.get_center_and_ray(opt,var.pose.detach(),intr=var.intr,offset=offset) # [B,HW,3]
                 if "ray_idx" in var:
                     gather_idx = var.ray_idx[...,None].repeat(1,1,3)
                     ray0 = ray0.gather(dim=1,index=gather_idx)
