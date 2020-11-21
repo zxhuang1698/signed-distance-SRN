@@ -136,7 +136,7 @@ def draw_pose(opt,image,rot_mtrx,size=15,width=1):
     # first column of rotation matrix is the rotated vector of [1, 0, 0]'
     # second column of rotation matrix is the rotated vector of [0, 1, 0]'
     # third column of rotation matrix is the rotated vector of [0, 0, 1]'
-    # then always take the first two element of each column as a projection to the 2D plane for visualization
+    # then always take the first two element of each column is a projection to the 2D plane for visualization
     endpoint = [(size+size*p[0],size+size*p[1]) for p in rot_mtrx.t()]
     draw.line([center,endpoint[0]],fill=(255,0,0),width=width)
     draw.line([center,endpoint[1]],fill=(0,255,0),width=width)
