@@ -27,11 +27,9 @@ class Dataset(base.Dataset):
         accum_idx = 0
         self.cat_id = list(self.cat_id_all.values()) if opt.data.shapenet.cat is None else \
                       [v for k,v in self.cat_id_all.items() if k in opt.data.shapenet.cat.split(",")]
-                      
         for value in self.cat_id:
             self.cat2label[value] = accum_idx
             accum_idx += 1
-            
         self.path = "data/NMR_Dataset"
         self.list_cads = self.get_list(opt,split)
         if subset: self.list_cads = self.list_cads[:subset]
@@ -82,8 +80,7 @@ class Dataset(base.Dataset):
         if aug is not None:
             pose = self.augment_camera(opt,pose,aug,pose_cam=pose_cam)
         sample.update(
-            #pose=pose,
-            pose_gt=pose,
+            pose=pose,
             intr=intr,
         )
         # load images and compute distance transform

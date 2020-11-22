@@ -27,9 +27,9 @@ class Pose():
         assert(pose.shape[-2:]==(3,4))
         return pose
 
-    def invert(self,pose):
+    def invert(self,pose,use_inverse=False):
         R,t = pose[...,:3],pose[...,3:]
-        R_inv = R.transpose(-1,-2)
+        R_inv = R.inverse() if use_inverse else R.transpose(-1,-2)
         t_inv = (-R_inv@t)[...,0]
         pose_inv = self(R=R_inv,t=t_inv)
         return pose_inv
@@ -71,41 +71,6 @@ def cam2world(X,pose):
     # therefore, p_world = [p_cam, 1] @ inv([R|t])'
     return X_hom@pose_inv.transpose(-1,-2)
 
-def euler2mat(angle):
-    """Convert euler angles to rotation matrix. y->x->z
-     Reference: https://github.com/ClementPinard/SfmLearner-Pytorch/blob/196bb89f8d8e4d74e34bb0ee75d0763fc1fda3f5/inverse_warp.py#L72
-    Args:
-        angle: rotation angle along 3 axis (in radians) -- size = [B, 3]
-    Returns:
-        Rotation matrix corresponding to the euler angles -- size = [B, 3, 3]
-    """
-    B = angle.size(0)
-    x, y, z = angle[:, 0], angle[:, 1], angle[:, 2]
-    zeros = torch.zeros(z.shape).to(z.device)
-    ones = torch.ones(z.shape).to(z.device)
-    # generate rot matrix for z
-    cosz = torch.cos(z)
-    sinz = torch.sin(z)
-    zmat = torch.stack([cosz, -sinz, zeros,
-                        sinz,  cosz, zeros,
-                        zeros, zeros,  ones], dim=1).reshape(B, 3, 3)
-    # generate rot matrix for y
-    cosy = torch.cos(y)
-    siny = torch.sin(y)
-    ymat = torch.stack([cosy, zeros,  siny,
-                        zeros,  ones, zeros,
-                        -siny, zeros,  cosy], dim=1).reshape(B, 3, 3)
-    # generate rot matrix for x
-    cosx = torch.cos(x)
-    sinx = torch.sin(x)
-    xmat = torch.stack([ones, zeros, zeros,
-                        zeros,  cosx, -sinx,
-                        zeros,  sinx,  cosx], dim=1).reshape(B, 3, 3)
-    # combine the rotation
-    rotMat = zmat @ xmat @ ymat
-    return rotMat
-
-# only for one axis
 def angle_to_rotation_matrix(a,axis):
     roll = dict(X=1,Y=2,Z=0)[axis]
     O = torch.zeros_like(a)
