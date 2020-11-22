@@ -2,7 +2,7 @@
 _parent_: options/shapenet/implicit.yaml
 
 group: sdf_srn_shapenet
-name: 111
+name: 112
 load: output/pretrain/shapenet-33/latest.ckpt
 
 arch:
@@ -32,7 +32,7 @@ impl:
 
 loss_weight:
     reg_type: l2
-    cat_reg: 1.e+4
+    cat_reg: 1.e+5
     render: 1
     shape_silh: 2
     ray_intsc: 1
