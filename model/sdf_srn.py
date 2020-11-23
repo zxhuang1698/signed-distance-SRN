@@ -246,10 +246,11 @@ class Graph(implicit.Graph):
         loss += self.L1_loss((-var.foreground_pts-margin).relu_())
         return loss
 
-    def center_dist(self, opt, var, shape_code):
+    def center_dist(self, opt, var, shape_code_list):
         # normalize the length of each vector so the regularization won't take the 
         # shortcut of shrinking the whole space for l1 or l2 regularization
         loss = 0
+        shape_code = torch.cat(shape_code_list, dim=-1)
         num_classes = opt.data.shapenet.num_classes
         shape_code = torch.nn.functional.normalize(shape_code, dim=-1, p=2)
         assert len(shape_code.shape) == 2
@@ -273,8 +274,8 @@ class Graph(implicit.Graph):
         return loss
     
     def category_reg_loss(self, opt, var):
-        shape_code = self.generator.level_weights
-        loss = self.center_dist(opt, var, shape_code)
+        shape_code_list = self.generator.level_weights
+        loss = self.center_dist(opt, var, shape_code_list)
         return loss
     
     def ray_intersection_loss(self,opt,var,level_eps=0.01):

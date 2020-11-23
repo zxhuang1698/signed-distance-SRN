@@ -94,8 +94,6 @@ class Generator(torch.nn.Module):
             if interm_coord and li>0 and li<len(L)-1: k_in += k0
             hyperlayer = module[li]
             # get the params from the hyper layers and latent code
-            # TODO: this is the place where I want to do clustering
-            # maybe I want to remove layernorm, and seperate rgb and sdf
             out_raw = hyperlayer.forward(latent)
             if return_weights:
                 weights_reg.append(out_raw)
