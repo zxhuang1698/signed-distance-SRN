@@ -37,8 +37,6 @@ class Generator(torch.nn.Module):
     def define_network(self,opt):
         # 3 + 6 * L
         point_dim = 3+(opt.impl.posenc_L*6 if opt.impl.posenc_L else 0)
-        # dim before rgb and sdf head
-        feat_dim = opt.arch.layers_impl[-1]
         # each is a module list, every element is a sequential to generate params of specific layer
         self.hyper_level = self.get_module_params(opt,opt.arch.layers_level,k0=point_dim,interm_coord=opt.arch.interm_coord)
         self.hyper_rgb = self.get_module_params(opt,opt.arch.layers_rgb,k0=point_dim,interm_coord=opt.arch.interm_coord)
