@@ -252,7 +252,7 @@ class Graph(implicit.Graph):
         loss = 0
         shape_code = torch.cat(shape_code_list, dim=-1)
         num_classes = opt.data.shapenet.num_classes
-        shape_code = torch.nn.functional.normalize(shape_code, dim=-1, p=2)
+        # shape_code = torch.nn.functional.normalize(shape_code, dim=-1, p=2)
         assert len(shape_code.shape) == 2
         batch_size = shape_code.shape[0]
         category = var.category_label
